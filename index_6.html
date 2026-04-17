@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>IronLog — Workout Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-0: #09090b; --bg-1: #111113; --bg-2: #19191d; --bg-3: #232329;
+      --border: #2a2a32; --border-s: #1c1c23;
+      --t0: #fafaf9; --t1: #a1a1aa; --t2: #636370; --t3: #3f3f48;
+      --accent: #34d399; --accent-d: rgba(52,211,153,.12); --accent-m: rgba(52,211,153,.25);
+      --red: #f87171; --red-d: rgba(248,113,113,.12);
+      --blue: #60a5fa; --blue-d: rgba(96,165,250,.12);
+      --amber: #fbbf24; --amber-d: rgba(251,191,36,.12);
+      --r: 14px; --rs: 10px; --rxs: 7px;
+      --font: 'DM Sans', system-ui, sans-serif;
+      --mono: 'DM Mono', 'SF Mono', monospace;
+      --shadow: 0 2px 8px rgba(0,0,0,.4), 0 12px 40px rgba(0,0,0,.35);
+    }
+    html { height: 100%; }
+    body { font-family: var(--font); background: var(--bg-0); color: var(--t0);
+           min-height: 100%; -webkit-font-smoothing: antialiased;
+           -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type="number"] { -moz-appearance: textfield; }
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 3px; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
+    @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
+    @keyframes sheetUp { from { transform:translateY(100%) } to { transform:translateY(0) } }
+    @keyframes sheetDown { from { transform:translateY(0) } to { transform:translateY(100%) } }
+    @keyframes backdropIn { from { opacity:0 } to { opacity:1 } }
+    @keyframes pop { 0% { transform:scale(.85); opacity:0 } 100% { transform:scale(1); opacity:1 } }
+    @keyframes slideToast { from { opacity:0; transform:translate(-50%,16px) } to { opacity:1; transform:translate(-50%,0) } }
+
+    .app { max-width: 520px; margin: 0 auto; padding-bottom: 90px; }
+
+    /* ── Auth ─────────────────────────────────── */
+    .auth-screen { display:flex; flex-direction:column; align-items:center;
+                   justify-content:center; min-height:100vh; padding:24px; }
+    .auth-logo { font-size:28px; font-weight:800; letter-spacing:-.04em; margin-bottom:4px; }
+    .auth-logo span { color:var(--accent); }
+    .auth-sub { font-size:13px; color:var(--t2); margin-bottom:32px; }
+    .auth-card { width:100%; max-width:380px; background:var(--bg-1);
+                 border:1px solid var(--border-s); border-radius:var(--r);
+                 padding:28px 24px; box-shadow:var(--shadow); }
+    .auth-toggle { display:flex; background:var(--bg-0); border-radius:var(--rs);
+                   padding:3px; margin-bottom:24px; }
+    .auth-toggle button { flex:1; padding:8px; font-size:13px; font-weight:600;
+                          font-family:var(--font); border:none; border-radius:var(--rxs);
+                          cursor:pointer; transition:.2s; background:transparent; color:var(--t2); }
+    .auth-toggle button.active { background:var(--bg-2); color:var(--t0); }
+    .field { margin-bottom:16px; }
+    .field label { display:block; font-size:11px; font-weight:600; text-transform:uppercase;
+                   letter-spacing:.1em; color:var(--t2); margin-bottom:6px; }
+    .field input { width:100%; padding:11px 14px; font-size:14px; font-family:var(--font);
+                   background:var(--bg-0); border:1px solid var(--border-s);
+                   border-radius:var(--rs); color:var(--t0); outline:none; transition:.2s; }
+    .field input:focus { border-color:var(--accent); }
+    .btn-primary { width:100%; padding:12px; font-size:14px; font-weight:700;
+                   font-family:var(--font); background:var(--accent); color:var(--bg-0);
+                   border:none; border-radius:var(--rs); cursor:pointer; margin-top:8px; }
+    .btn-primary:disabled { opacity:.4; cursor:default; }
+    .auth-error { margin-top:12px; padding:10px 14px; font-size:12px; color:var(--red);
+                  background:var(--red-d); border-radius:var(--rxs); display:none; }
+    .auth-demo { margin-top:16px; font-size:12px; color:var(--t2); text-align:center; }
+    .auth-demo a { color:var(--accent); cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+
+    /* ── Topbar ───────────────────────────────── */
+    .topbar { display:flex; align-items:center; justify-content:space-between; padding:16px 20px 0; }
+    .topbar .date { font-size:11px; text-transform:uppercase; letter-spacing:.15em;
+                    color:var(--t3); font-weight:500; }
+    .topbar h1 { font-size:22px; font-weight:800; letter-spacing:-.03em; margin-top:2px; }
+    .topbar h1 span { transition:color .3s; }
+    .topbar-right { display:flex; align-items:center; gap:8px; position:relative; }
+    .avatar-btn { width:32px; height:32px; border-radius:50%; background:var(--bg-2);
+                  border:1px solid var(--border-s); color:var(--t2); font-size:13px;
+                  font-weight:700; font-family:var(--font); cursor:pointer;
+                  display:grid; place-items:center; transition:.2s; }
+    .avatar-btn:hover { border-color:var(--accent); }
+    .dropdown { position:absolute; top:44px; right:0; background:var(--bg-2);
+                border:1px solid var(--border); border-radius:var(--rs);
+                box-shadow:var(--shadow); padding:4px; z-index:60; min-width:150px;
+                animation:fadeUp .15s ease; }
+    .dropdown button { display:block; width:100%; padding:10px 14px; font-size:13px;
+                       font-weight:500; font-family:var(--font); background:transparent;
+                       border:none; color:var(--t1); text-align:left;
+                       border-radius:var(--rxs); cursor:pointer; transition:.15s; }
+    .dropdown button:hover { background:var(--bg-3); color:var(--t0); }
+    .dropdown .danger { color:var(--red); }
+    .dropdown .danger:hover { background:var(--red-d); }
+
+    /* ── View Toggle ──────────────────────────── */
+    .view-toggle { display:flex; margin:14px 20px 0; background:var(--bg-1);
+                   border:1px solid var(--border-s); border-radius:var(--rs); padding:3px; }
+    .view-toggle button { flex:1; padding:7px; font-size:12px; font-weight:600;
+                          font-family:var(--font); text-transform:uppercase; letter-spacing:.08em;
+                          background:transparent; color:var(--t2); border:none;
+                          border-radius:var(--rxs); cursor:pointer; transition:.2s; }
+    .view-toggle button.active { color:var(--t0); background:var(--bg-3); }
+
+    /* ── Exercise Buttons ─────────────────────── */
+    .ex-grid { padding:16px 20px 8px; display:flex; flex-direction:column; gap:8px; }
+    .ex-btn {
+      width:100%; padding:18px 20px; display:flex; align-items:center; justify-content:space-between;
+      background:var(--bg-1); border:1px solid var(--border-s); border-radius:var(--r);
+      cursor:pointer; transition:all .2s; -webkit-user-select:none; user-select:none;
+    }
+    .ex-btn:active { transform:scale(.98); }
+    .ex-btn:hover { border-color:var(--bg-3); }
+    .ex-btn .ex-left { display:flex; align-items:center; gap:14px; }
+    .ex-btn .ex-dot { width:8px; height:8px; border-radius:50%; background:var(--bg-3); transition:background .3s; flex-shrink:0; }
+    .ex-btn.has-sets .ex-dot { background:var(--accent); }
+    .ex-btn .ex-name { font-size:15px; font-weight:600; color:var(--t1); transition:color .2s; }
+    .ex-btn.has-sets .ex-name { color:var(--t0); }
+    .ex-btn .ex-right { display:flex; align-items:center; gap:10px; }
+    .ex-btn .set-count { font-size:12px; font-family:var(--mono); font-weight:500; color:var(--t3); }
+    .ex-btn.has-sets .set-count { color:var(--accent); }
+    .ex-btn .arrow { font-size:14px; color:var(--t3); }
+
+    /* ── Finish Session ───────────────────────── */
+    .finish-area { padding:8px 20px 12px; }
+    .finish-btn {
+      width:100%; padding:14px; font-size:13px; font-weight:700; font-family:var(--font);
+      text-transform:uppercase; letter-spacing:.12em; border:none; border-radius:var(--r);
+      cursor:pointer; transition:.25s;
+    }
+    .finish-btn.ready { color:#fff; }
+    .finish-btn.disabled { background:var(--bg-1); color:var(--t3); cursor:default;
+                           border:1px solid var(--border-s); }
+
+    /* ── Demo Randomize Button ────────────────── */
+    .demo-rand-btn {
+      width:100%; padding:12px; margin-top:8px; font-size:13px; font-weight:600;
+      font-family:var(--font); letter-spacing:.04em;
+      background:linear-gradient(135deg, rgba(251,191,36,.1), rgba(96,165,250,.1));
+      border:1px dashed rgba(251,191,36,.25); border-radius:var(--r);
+      color:var(--amber); cursor:pointer; transition:all .2s;
+      display:flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .demo-rand-btn:hover { background:linear-gradient(135deg, rgba(251,191,36,.15), rgba(96,165,250,.15));
+                           border-color:rgba(251,191,36,.4); }
+    .demo-rand-btn:active { transform:scale(.98); }
+    .demo-rand-icon { font-size:15px; }
+
+    /* ── Bottom Sheet ─────────────────────────── */
+    .sheet-backdrop {
+      position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:80;
+      animation:backdropIn .2s ease; backdrop-filter:blur(4px);
+    }
+    .sheet {
+      position:fixed; bottom:0; left:50%; width:100%; max-width:520px;
+      transform:translateX(-50%); z-index:90;
+      background:var(--bg-1); border-top:1px solid var(--border);
+      border-radius:20px 20px 0 0; padding:0 0 32px;
+      animation:sheetUp .3s cubic-bezier(.32,1,.23,1);
+      max-height:85vh; overflow-y:auto;
+    }
+    .sheet-handle { width:36px; height:4px; background:var(--bg-3); border-radius:4px;
+                    margin:10px auto 0; }
+    .sheet-header { padding:16px 24px 12px; display:flex; align-items:center;
+                    justify-content:space-between; }
+    .sheet-header h2 { font-size:18px; font-weight:800; letter-spacing:-.02em; }
+    .sheet-close { width:32px; height:32px; border-radius:50%; background:var(--bg-3);
+                   border:none; color:var(--t1); font-size:16px; cursor:pointer;
+                   display:grid; place-items:center; transition:.15s; }
+    .sheet-close:hover { background:var(--bg-2); color:var(--t0); }
+
+    /* Input area inside sheet */
+    .sheet-input-area { padding:0 24px; }
+    .input-pair { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+    .input-block label { display:block; font-size:10px; font-weight:600; text-transform:uppercase;
+                         letter-spacing:.15em; color:var(--t3); margin-bottom:6px; text-align:center; }
+    .input-block input {
+      width:100%; padding:14px 8px; font-size:28px; font-weight:700;
+      font-family:var(--mono); background:var(--bg-0); border:2px solid var(--border-s);
+      border-radius:var(--rs); color:var(--t0); outline:none; text-align:center;
+      transition:border-color .2s; caret-color:var(--accent);
+    }
+    .input-block input:focus { border-color:var(--accent); }
+    .input-block input::placeholder { color:var(--t3); font-weight:400; }
+    .save-set-btn {
+      width:100%; padding:16px; font-size:15px; font-weight:700; font-family:var(--font);
+      border:none; border-radius:var(--rs); cursor:pointer; transition:.2s;
+      text-transform:uppercase; letter-spacing:.08em;
+    }
+    .save-set-btn.active { color:var(--bg-0); }
+    .save-set-btn.inactive { background:var(--bg-3); color:var(--t3); cursor:default; }
+
+    /* Logged sets inside sheet */
+    .logged-sets { padding:16px 24px 0; }
+    .logged-sets-title { font-size:10px; font-weight:600; text-transform:uppercase;
+                         letter-spacing:.15em; color:var(--t3); margin-bottom:10px; }
+    .set-pills { display:flex; flex-wrap:wrap; gap:8px; }
+    .set-pill {
+      display:flex; align-items:center; gap:8px; padding:8px 14px;
+      background:var(--bg-0); border:1px solid var(--border-s); border-radius:100px;
+      animation:pop .25s cubic-bezier(.32,1,.23,1);
+    }
+    .set-pill .set-num { font-size:10px; font-weight:700; color:var(--t3); text-transform:uppercase; }
+    .set-pill .set-vals { font-size:13px; font-weight:600; font-family:var(--mono); color:var(--t0); }
+    .set-pill .del-set { width:18px; height:18px; border-radius:50%; background:var(--bg-2);
+                         border:none; color:var(--t3); font-size:10px; cursor:pointer;
+                         display:grid; place-items:center; transition:.15s; margin-left:2px; }
+    .set-pill .del-set:hover { background:var(--red-d); color:var(--red); }
+
+    /* ── Dashboard ────────────────────────────── */
+    .dashboard { padding:12px 20px; }
+    .dash-stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:16px; }
+    .stat-card { background:var(--bg-1); border:1px solid var(--border-s);
+                 border-radius:var(--rs); padding:14px 10px; text-align:center; }
+    .stat-card .sv { font-size:22px; font-weight:800; font-family:var(--mono); letter-spacing:-.02em; }
+    .stat-card .sl { font-size:9px; font-weight:600; text-transform:uppercase;
+                     letter-spacing:.12em; color:var(--t2); margin-top:4px; }
+
+    .chart-card { background:var(--bg-1); border:1px solid var(--border-s);
+                  border-radius:var(--r); padding:20px; margin-bottom:12px; }
+    .chart-card h3 { font-size:14px; font-weight:700; margin-bottom:3px; }
+    .chart-card .chart-sub { font-size:11px; color:var(--t2); margin-bottom:14px; }
+    .chart-wrap { position:relative; height:200px; }
+    .chart-wrap canvas { width:100%!important; height:100%!important; }
+
+    .ex-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+    .ex-chip { padding:5px 12px; font-size:11px; font-weight:600; font-family:var(--font);
+               border-radius:100px; cursor:pointer; border:1px solid var(--border-s);
+               background:transparent; color:var(--t2); transition:.2s; white-space:nowrap; }
+    .ex-chip.active { border-color:currentColor; }
+
+    .empty-state { text-align:center; padding:48px 20px; }
+    .empty-state .icon { font-size:40px; margin-bottom:12px; opacity:.15; }
+    .empty-state .msg { font-size:13px; color:var(--t2); }
+    .empty-state .sub { font-size:11px; color:var(--t3); margin-top:6px; }
+
+    .history-section { margin-top:16px; }
+    .history-section h3 { font-size:11px; font-weight:700; text-transform:uppercase;
+                          letter-spacing:.1em; color:var(--t2); margin-bottom:10px; }
+    .hist-entry { background:var(--bg-1); border:1px solid var(--border-s);
+                  border-radius:var(--rs); padding:14px; margin-bottom:8px; }
+    .hist-date { font-size:11px; color:var(--t2); font-family:var(--mono); margin-bottom:8px; }
+    .hist-items { display:flex; flex-direction:column; gap:4px; }
+    .hist-ex { display:flex; justify-content:space-between; align-items:baseline;
+               font-size:12px; padding:2px 0; }
+    .hist-ex .name { color:var(--t1); font-weight:500; }
+    .hist-ex .vals { color:var(--t0); font-family:var(--mono); font-weight:500; font-size:11px; }
+    .clear-btn { width:100%; padding:10px; font-size:11px; font-weight:600;
+                 font-family:var(--font); text-transform:uppercase; letter-spacing:.1em;
+                 background:var(--red-d); color:rgba(248,113,113,.65);
+                 border:1px solid rgba(248,113,113,.1); border-radius:var(--rs);
+                 cursor:pointer; margin-top:12px; }
+
+    /* ── Tab Bar ──────────────────────────────── */
+    .tab-bar { position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+               width:100%; max-width:520px;
+               background:linear-gradient(to top, var(--bg-0) 80%, transparent);
+               padding:20px 14px 14px; z-index:50; }
+    .tab-bar-inner { display:flex; background:var(--bg-1); border:1px solid var(--border-s);
+                     border-radius:16px; padding:4px; box-shadow:var(--shadow); }
+    .tab-btn { flex:1; padding:10px 4px 8px; display:flex; flex-direction:column;
+               align-items:center; gap:3px; background:transparent; border:none;
+               border-radius:12px; cursor:pointer; transition:.25s; }
+    .tab-btn .tab-icon { transition:color .25s, opacity .25s; opacity:0.35;
+                         display:flex; align-items:center; justify-content:center; }
+    .tab-btn .tab-label { font-size:10px; font-weight:600; font-family:var(--font);
+                          color:var(--t3); letter-spacing:.04em; transition:.25s; }
+    .tab-btn.active .tab-icon { opacity:1; }
+
+    /* ── Toast ────────────────────────────────── */
+    .toast { position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
+             padding:10px 24px; border-radius:100px; font-size:13px; font-weight:600;
+             font-family:var(--font); z-index:100; animation:slideToast .3s ease;
+             box-shadow:var(--shadow); }
+    .toast.success { background:var(--accent); color:var(--bg-0); }
+    .toast.error { background:var(--red); color:#fff; }
+
+    .loading { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+    .spinner { width:24px; height:24px; border:2px solid var(--bg-3);
+               border-top-color:var(--accent); border-radius:50%;
+               animation:spin .6s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg) } }
+    .hidden { display:none!important; }
+    @media (max-width:400px) { .dash-stats { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth-screen" class="auth-screen hidden">
+  <div class="auth-logo">Iron<span>Log</span></div>
+  <div class="auth-sub">Track every rep. See every gain.</div>
+  <div class="auth-card" style="animation:fadeUp .4s ease both">
+    <div class="auth-toggle">
+      <button class="active" onclick="setAuthMode('login')">Sign In</button>
+      <button onclick="setAuthMode('signup')">Sign Up</button>
+    </div>
+    <div class="field"><label>Email</label><input type="email" id="auth-email" placeholder="you@email.com"/></div>
+    <div class="field"><label>Password</label><input type="password" id="auth-password" placeholder="••••••••"/></div>
+    <button class="btn-primary" id="auth-submit" onclick="handleAuth()">Sign In</button>
+    <div id="auth-error" class="auth-error"></div>
+    <div class="auth-demo">Or <a onclick="startDemo()">try the demo</a> without an account</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-screen" class="app hidden">
+  <div class="topbar">
+    <div>
+      <div class="date" id="today-date"></div>
+      <h1><span id="day-title"></span> Day</h1>
+    </div>
+    <div class="topbar-right">
+      <button class="avatar-btn" id="avatar-btn" onclick="toggleMenu()">?</button>
+      <div id="dropdown-menu" class="dropdown hidden">
+        <button onclick="exportData()">Export Data</button>
+        <button class="danger" onclick="handleSignOut()">Sign Out</button>
+      </div>
+    </div>
+  </div>
+  <div class="view-toggle">
+    <button class="active" onclick="setView('log')" id="btn-log">Log</button>
+    <button onclick="setView('progress')" id="btn-progress">Progress</button>
+  </div>
+  <div id="view-log">
+    <div class="ex-grid" id="ex-grid"></div>
+    <div class="finish-area">
+      <button class="finish-btn disabled" id="finish-btn" onclick="finishSession()">Finish Session</button>
+      <button class="demo-rand-btn hidden" id="demo-rand-btn" onclick="generateDemoData()">
+        <span class="demo-rand-icon">⚡</span> Generate Demo Data
+      </button>
+    </div>
+  </div>
+  <div id="view-progress" class="hidden">
+    <div class="dashboard" id="dashboard"></div>
+  </div>
+  <div class="tab-bar"><div class="tab-bar-inner" id="tab-bar"></div></div>
+</div>
+
+<!-- BOTTOM SHEET -->
+<div id="sheet-root"></div>
+
+<!-- TOAST -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- LOADING -->
+<div id="loading-screen" class="loading"><div class="spinner"></div></div>
+
+<script>
+// ═══════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════
+const SUPABASE_URL  = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON = 'YOUR_SUPABASE_ANON_KEY';
+
+const WORKOUTS = {
+  Push: [
+    { id:'db-press',    name:'DB Press' },
+    { id:'db-incline',  name:'DB Incline Press' },
+    { id:'shoulder-lat',name:'Shoulder Lat' },
+    { id:'tricep-pull', name:'Tricep Pulldown' },
+    { id:'rope-pullup', name:'Rope Pullup' },
+    { id:'dips',        name:'Dips' },
+  ],
+  Pull: [
+    { id:'lat-pull',     name:'Lat Pull' },
+    { id:'row',          name:'Row' },
+    { id:'rear-delt',    name:'Rear Delt' },
+    { id:'incline-curl', name:'Incline DB Curl' },
+    { id:'preacher-curl',name:'Preacher Curl' },
+    { id:'hammer-curl',  name:'Hammer Curl' },
+  ],
+  Legs: [
+    { id:'hack-squat',name:'Hack Squat' },
+    { id:'leg-press', name:'Leg Press' },
+    { id:'leg-curls', name:'Leg Curls' },
+    { id:'leg-ext',   name:'Leg Extension' },
+    { id:'abs',       name:'Abs' },
+  ],
+  'B&C&S': [
+    { id:'bcs-db-press', name:'DB Press' },
+    { id:'bcs-incline',  name:'DB Incline Press' },
+    { id:'bcs-shoulder', name:'Shoulder Lat' },
+    { id:'bcs-lat-pull', name:'Lat Pull' },
+    { id:'bcs-row',      name:'Row' },
+  ],
+};
+
+const TAB = {
+  Push:   { color:'#f87171', svg:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16"/><path d="M18 4v16"/><path d="M6 12h12"/><rect x="3" y="7" width="2" height="10" rx="1" fill="currentColor" stroke="none"/><rect x="19" y="7" width="2" height="10" rx="1" fill="currentColor" stroke="none"/><rect x="1" y="9" width="2" height="6" rx="1" fill="currentColor" stroke="none"/><rect x="21" y="9" width="2" height="6" rx="1" fill="currentColor" stroke="none"/></svg>' },
+  Pull:   { color:'#60a5fa', svg:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-3 0-5 2.5-5 5 0 1.5.8 3 2 4l-1 2.5"/><path d="M12 3c3 0 5 2.5 5 5 0 1.5-.8 3-2 4l1 2.5"/><circle cx="12" cy="3" r="1.5" fill="currentColor" stroke="none"/><path d="M8 14.5c-1 1-2 3-2 4.5 0 1 .5 2 2 2"/><path d="M16 14.5c1 1 2 3 2 4.5 0 1-.5 2-2 2"/><path d="M8 21h8"/></svg>' },
+  Legs:   { color:'#34d399', svg:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3c0 2-1 4-1 6s.5 3 .5 5c0 1.5-.5 3-.5 4"/><path d="M16 3v3c0 2 1 4 1 6s-.5 3-.5 5c0 1.5.5 3 .5 4"/><path d="M5 21h4"/><path d="M15 21h4"/><path d="M8 3h8"/></svg>' },
+  'B&C&S':{ color:'#fbbf24', svg:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 C8 4 5 6.5 5 10c0 2 1 3.5 2 5l-1 3"/><path d="M12 4c4 0 7 2.5 7 6 0 2-1 3.5-2 5l1 3"/><circle cx="12" cy="4" r="2" fill="currentColor" stroke="none"/><path d="M6 18l2-1h8l2 1"/><path d="M7.5 12h9"/></svg>' },
+};
+
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+let sb = null, user = null, isDemo = false;
+let activeTab = 'Push', currentView = 'log', authMode = 'login';
+let sessionSets = {};
+let history = [];
+let chartW = null, chartR = null;
+let selectedChartEx = null;
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('today-date').textContent =
+    new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
+  if (SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
+    try {
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+      const { data:{ session } } = await sb.auth.getSession();
+      if (session) { user = session.user; await loadHistory(); showApp(); }
+      else showAuth();
+    } catch(e) { console.error(e); showAuth(); }
+  } else showAuth();
+});
+
+// ═══════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════
+function showAuth() {
+  document.getElementById('loading-screen').classList.add('hidden');
+  document.getElementById('auth-screen').classList.remove('hidden');
+  document.getElementById('app-screen').classList.add('hidden');
+}
+function showApp() {
+  document.getElementById('loading-screen').classList.add('hidden');
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('app-screen').classList.remove('hidden');
+  document.getElementById('avatar-btn').textContent =
+    user ? (user.email||'U')[0].toUpperCase() : 'D';
+  document.getElementById('demo-rand-btn').classList.toggle('hidden', !isDemo);
+  initSession();
+  renderTabs();
+  renderExercises();
+}
+function setAuthMode(m) {
+  authMode = m;
+  document.querySelectorAll('.auth-toggle button').forEach(function(b,i){
+    b.classList.toggle('active', (m==='login'?0:1)===i);
+  });
+  document.getElementById('auth-submit').textContent = m==='login'?'Sign In':'Sign Up';
+  document.getElementById('auth-error').style.display = 'none';
+}
+async function handleAuth() {
+  var email = document.getElementById('auth-email').value.trim();
+  var pw    = document.getElementById('auth-password').value;
+  var err   = document.getElementById('auth-error');
+  err.style.display = 'none';
+  if (!email||!pw) { err.textContent='Fill in all fields.'; err.style.display='block'; return; }
+  if (!sb) { err.textContent='Supabase not configured. Use the demo.'; err.style.display='block'; return; }
+  var btn = document.getElementById('auth-submit');
+  btn.disabled=true; btn.textContent='Loading...';
+  try {
+    var r;
+    if (authMode==='login') r = await sb.auth.signInWithPassword({email:email,password:pw});
+    else r = await sb.auth.signUp({email:email,password:pw});
+    if (r.error) throw r.error;
+    user = r.data.user || r.data.session.user;
+    await loadHistory(); showApp();
+  } catch(e) { err.textContent=e.message||'Auth failed.'; err.style.display='block'; }
+  finally { btn.disabled=false; btn.textContent=authMode==='login'?'Sign In':'Sign Up'; }
+}
+function startDemo() { isDemo=true; user=null;
+  history=JSON.parse(localStorage.getItem('ironlog_history')||'[]'); showApp(); }
+async function handleSignOut() { toggleMenu();
+  if(sb&&!isDemo) await sb.auth.signOut();
+  user=null; isDemo=false; history=[]; showAuth(); }
+function toggleMenu() { document.getElementById('dropdown-menu').classList.toggle('hidden'); }
+document.addEventListener('click', function(e){
+  if(!e.target.closest('#avatar-btn')&&!e.target.closest('#dropdown-menu'))
+    document.getElementById('dropdown-menu').classList.add('hidden');
+});
+
+// ═══════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════
+async function loadHistory() {
+  if(!sb||isDemo) return;
+  try {
+    var res = await sb.from('workout_logs').select('*')
+      .eq('user_id',user.id).order('created_at',{ascending:true});
+    if(res.error) throw res.error;
+    history = (res.data||[]).map(function(r){
+      return {id:r.id, day:r.day, date:r.created_at, data:r.exercises};
+    });
+  } catch(e){ console.error(e); }
+}
+
+function initSession() {
+  sessionSets = {};
+  Object.values(WORKOUTS).flat().forEach(function(ex){ sessionSets[ex.id] = []; });
+}
+
+async function finishSession() {
+  var exercises = WORKOUTS[activeTab];
+  var dayData = {};
+  var hasSets = false;
+  exercises.forEach(function(ex){
+    if (sessionSets[ex.id] && sessionSets[ex.id].length) {
+      dayData[ex.id] = sessionSets[ex.id].map(function(s){ return {weight:s.weight, reps:s.reps}; });
+      hasSets = true;
+    }
+  });
+  if (!hasSets) return;
+
+  var entry = { day:activeTab, date:new Date().toISOString(), data:dayData };
+
+  if (sb && !isDemo && user) {
+    try {
+      var res = await sb.from('workout_logs')
+        .insert({ user_id:user.id, day:activeTab, exercises:dayData }).select().single();
+      if(res.error) throw res.error;
+      entry.id = res.data.id; entry.date = res.data.created_at;
+    } catch(e) { showToast('Save failed','error'); return; }
+  }
+
+  history.push(entry);
+  if (isDemo) localStorage.setItem('ironlog_history', JSON.stringify(history));
+
+  exercises.forEach(function(ex){ sessionSets[ex.id] = []; });
+  renderExercises();
+  showToast('Session saved');
+}
+
+function exportData() { toggleMenu();
+  var blob = new Blob([JSON.stringify(history,null,2)],{type:'application/json'});
+  var a = document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='ironlog-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click(); URL.revokeObjectURL(a.href); showToast('Exported'); }
+
+// Weight ranges per exercise for realistic demo data
+var DEMO_RANGES = {
+  'db-press':[30,70], 'db-incline':[25,60], 'shoulder-lat':[15,35],
+  'tricep-pull':[30,65], 'rope-pullup':[25,55], 'dips':[0,45],
+  'lat-pull':[80,160], 'row':[60,135], 'rear-delt':[15,35],
+  'incline-curl':[15,35], 'preacher-curl':[20,45], 'hammer-curl':[20,40],
+  'hack-squat':[90,225], 'leg-press':[135,360], 'leg-curls':[60,120],
+  'leg-ext':[70,140], 'abs':[0,25],
+  'bcs-db-press':[25,60], 'bcs-incline':[20,50], 'bcs-shoulder':[15,30],
+  'bcs-lat-pull':[70,140], 'bcs-row':[50,115],
+};
+
+function generateDemoData() {
+  history = [];
+  var now = Date.now();
+  var days = Object.keys(WORKOUTS);
+  // Generate 8 weeks of data, cycling through days
+  var numWeeks = 8;
+  for (var w = 0; w < numWeeks; w++) {
+    days.forEach(function(day, di) {
+      var sessionDate = new Date(now - (numWeeks - w) * 7 * 86400000 + di * 86400000);
+      var exercises = WORKOUTS[day];
+      var dayData = {};
+      exercises.forEach(function(ex) {
+        var range = DEMO_RANGES[ex.id] || [20,60];
+        var baseW = range[0];
+        var maxW = range[1];
+        // Progressive overload: weight increases over weeks
+        var progress = baseW + (maxW - baseW) * (w / numWeeks);
+        // Add some noise
+        var numSets = 3 + Math.floor(Math.random() * 2); // 3-4 sets
+        var sets = [];
+        for (var s = 0; s < numSets; s++) {
+          var wt = Math.round((progress + (Math.random() - 0.5) * 10) / 5) * 5;
+          if (wt < 0) wt = 0;
+          var reps = Math.floor(8 + Math.random() * 6); // 8-13 reps
+          // Later sets: slightly fewer reps (fatigue)
+          reps = Math.max(5, reps - s);
+          sets.push({ weight:wt, reps:reps });
+        }
+        dayData[ex.id] = sets;
+      });
+      history.push({ day:day, date:sessionDate.toISOString(), data:dayData });
+    });
+  }
+  localStorage.setItem('ironlog_history', JSON.stringify(history));
+  showToast('8 weeks of demo data generated');
+  if (currentView === 'progress') renderDashboard();
+  renderExercises();
+}
+
+// ═══════════════════════════════════════════
+// RENDER — TABS
+// ═══════════════════════════════════════════
+function renderTabs() {
+  var bar = document.getElementById('tab-bar');
+  bar.innerHTML = '';
+  Object.keys(TAB).forEach(function(key){
+    var meta = TAB[key];
+    var on = key===activeTab;
+    var b = document.createElement('button');
+    b.className = 'tab-btn ' + (on?'active':'');
+    b.innerHTML = '<span class="tab-icon" style="color:'+(on?meta.color:'var(--t3)')+'">'+meta.svg+'</span>'+
+      '<span class="tab-label" style="'+(on?'color:'+meta.color:'')+'">'+key+'</span>';
+    b.style.background = on ? hexA(meta.color,.08) : 'transparent';
+    b.style.border = on ? '1px solid '+hexA(meta.color,.15) : '1px solid transparent';
+    b.onclick = function(){ activeTab=key; renderTabs(); renderExercises(); updateHeader();
+                            if(currentView==='progress') renderDashboard(); };
+    bar.appendChild(b);
+  });
+  updateHeader();
+}
+
+function updateHeader() {
+  var t = document.getElementById('day-title');
+  t.textContent = activeTab; t.style.color = TAB[activeTab].color;
+}
+
+// ═══════════════════════════════════════════
+// RENDER — EXERCISE BUTTONS
+// ═══════════════════════════════════════════
+function renderExercises() {
+  var grid = document.getElementById('ex-grid');
+  grid.innerHTML = '';
+  var exercises = WORKOUTS[activeTab];
+  var accent = TAB[activeTab].color;
+
+  exercises.forEach(function(ex, i){
+    var sets = sessionSets[ex.id] || [];
+    var btn = document.createElement('button');
+    btn.className = 'ex-btn ' + (sets.length ? 'has-sets' : '');
+    btn.style.animationName = 'fadeUp';
+    btn.style.animationDuration = '.35s';
+    btn.style.animationDelay = (i*.04)+'s';
+    btn.style.animationFillMode = 'both';
+    var dotStyle = sets.length ?
+      'background:'+accent+';box-shadow:0 0 8px '+hexA(accent,.4) : '';
+    var countText = sets.length ? sets.length+' set'+(sets.length>1?'s':'') : '';
+    btn.innerHTML =
+      '<div class="ex-left">'+
+        '<div class="ex-dot" style="'+dotStyle+'"></div>'+
+        '<span class="ex-name">'+ex.name+'</span>'+
+      '</div>'+
+      '<div class="ex-right">'+
+        '<span class="set-count" style="'+(sets.length?'color:'+accent:'')+'">'+countText+'</span>'+
+        '<span class="arrow">\u203A</span>'+
+      '</div>';
+    btn.onclick = function(){ openSheet(ex.id); };
+    grid.appendChild(btn);
+  });
+
+  var totalSets = exercises.reduce(function(s,ex){ return s + (sessionSets[ex.id]||[]).length; }, 0);
+  var fb = document.getElementById('finish-btn');
+  if (totalSets > 0) {
+    fb.className = 'finish-btn ready';
+    fb.style.background = accent;
+  } else {
+    fb.className = 'finish-btn disabled';
+    fb.style.background = '';
+  }
+}
+
+// ═══════════════════════════════════════════
+// BOTTOM SHEET
+// ═══════════════════════════════════════════
+function openSheet(exId) {
+  var root = document.getElementById('sheet-root');
+  var allEx = [];
+  Object.values(WORKOUTS).forEach(function(arr){ allEx = allEx.concat(arr); });
+  var ex = allEx.find(function(e){ return e.id===exId; });
+  var accent = TAB[activeTab].color;
+  var sets = sessionSets[exId] || [];
+
+  // Find last logged values for placeholder
+  var lastEntry = null;
+  for (var i = history.length - 1; i >= 0; i--) {
+    if (history[i].day===activeTab && history[i].data[exId]) {
+      lastEntry = history[i]; break;
+    }
+  }
+  var lastSets = lastEntry ? lastEntry.data[exId] : null;
+  var phW = lastSets && lastSets.length ? lastSets[lastSets.length-1].weight : '';
+  var phR = lastSets && lastSets.length ? lastSets[lastSets.length-1].reps : '';
+
+  var pillsHtml = '';
+  if (sets.length) {
+    pillsHtml = '<div class="logged-sets">'+
+      '<div class="logged-sets-title">Logged Sets</div>'+
+      '<div class="set-pills">';
+    sets.forEach(function(s, idx){
+      pillsHtml += '<div class="set-pill">'+
+        '<span class="set-num">S'+(idx+1)+'</span>'+
+        '<span class="set-vals">'+s.weight+' lbs \u00D7 '+s.reps+'</span>'+
+        '<button class="del-set" onclick="deleteSet(\''+exId+'\','+idx+')">\u2715</button>'+
+      '</div>';
+    });
+    pillsHtml += '</div></div>';
+  }
+
+  root.innerHTML =
+    '<div class="sheet-backdrop" onclick="closeSheet()"></div>'+
+    '<div class="sheet" id="sheet-panel">'+
+      '<div class="sheet-handle"></div>'+
+      '<div class="sheet-header">'+
+        '<h2>'+ex.name+'</h2>'+
+        '<button class="sheet-close" onclick="closeSheet()">\u2715</button>'+
+      '</div>'+
+      pillsHtml+
+      '<div class="sheet-input-area" style="margin-top:16px;">'+
+        '<div class="input-pair">'+
+          '<div class="input-block">'+
+            '<label>Weight (lbs)</label>'+
+            '<input type="number" inputmode="numeric" id="sheet-weight" placeholder="'+(phW||'0')+'" />'+
+          '</div>'+
+          '<div class="input-block">'+
+            '<label>Reps</label>'+
+            '<input type="number" inputmode="numeric" id="sheet-reps" placeholder="'+(phR||'0')+'" />'+
+          '</div>'+
+        '</div>'+
+        '<button class="save-set-btn inactive" id="save-set-btn" onclick="saveSet(\''+exId+'\')">'+
+          'Save Set '+(sets.length+1)+
+        '</button>'+
+      '</div>'+
+    '</div>';
+
+  var wI = document.getElementById('sheet-weight');
+  var rI = document.getElementById('sheet-reps');
+  var ssb = document.getElementById('save-set-btn');
+
+  function checkReady() {
+    var ready = wI.value && rI.value;
+    if(ready) { ssb.className='save-set-btn active'; ssb.style.background=accent; }
+    else { ssb.className='save-set-btn inactive'; ssb.style.background=''; }
+  }
+  wI.addEventListener('input', checkReady);
+  rI.addEventListener('input', checkReady);
+  wI.addEventListener('focus', function(e){ e.target.select(); });
+  rI.addEventListener('focus', function(e){ e.target.select(); });
+
+  function enterSave(e) { if(e.key==='Enter' && wI.value && rI.value) saveSet(exId); }
+  wI.addEventListener('keydown', enterSave);
+  rI.addEventListener('keydown', enterSave);
+
+  requestAnimationFrame(function(){ wI.focus(); });
+}
+
+function closeSheet() {
+  var panel = document.getElementById('sheet-panel');
+  if(panel) panel.style.animation = 'sheetDown .25s ease forwards';
+  setTimeout(function(){ document.getElementById('sheet-root').innerHTML = ''; }, 260);
+}
+
+function saveSet(exId) {
+  var w = document.getElementById('sheet-weight');
+  var r = document.getElementById('sheet-reps');
+  if (!w.value || !r.value) return;
+  if (!sessionSets[exId]) sessionSets[exId] = [];
+  sessionSets[exId].push({ weight:Number(w.value), reps:Number(r.value) });
+  renderExercises();
+  closeSheet();
+  var setNum = sessionSets[exId].length;
+  showToast('Set '+setNum+' saved \u2014 '+w.value+' lbs \u00D7 '+r.value);
+}
+
+function deleteSet(exId, idx) {
+  sessionSets[exId].splice(idx, 1);
+  renderExercises();
+  openSheet(exId);
+}
+
+// ═══════════════════════════════════════════
+// VIEW TOGGLE
+// ═══════════════════════════════════════════
+function setView(v) {
+  currentView = v;
+  document.getElementById('btn-log').classList.toggle('active', v==='log');
+  document.getElementById('btn-progress').classList.toggle('active', v==='progress');
+  document.getElementById('view-log').classList.toggle('hidden', v!=='log');
+  document.getElementById('view-progress').classList.toggle('hidden', v!=='progress');
+  if (v==='progress') renderDashboard();
+}
+
+// ═══════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════
+function renderDashboard() {
+  var c = document.getElementById('dashboard');
+  var dh = history.filter(function(h){ return h.day===activeTab; });
+  var exercises = WORKOUTS[activeTab];
+  var accent = TAB[activeTab].color;
+
+  if (!dh.length) {
+    c.innerHTML = '<div class="empty-state" style="animation:fadeIn .3s ease">'+
+      '<div class="icon">\uD83D\uDCCA</div>'+
+      '<div class="msg">No sessions logged yet</div>'+
+      '<div class="sub">Complete a workout to track progress</div></div>';
+    return;
+  }
+
+  if (!selectedChartEx || !exercises.find(function(e){ return e.id===selectedChartEx; }))
+    selectedChartEx = exercises[0].id;
+
+  var totalSessions = dh.length;
+  var totalSets = dh.reduce(function(s,h){
+    return s + Object.values(h.data).reduce(function(a,sets){
+      return a + (Array.isArray(sets) ? sets.length : 1);
+    },0);
+  }, 0);
+  var lastDate = new Date(dh[dh.length-1].date);
+  var daysAgo = Math.floor((Date.now()-lastDate.getTime())/(86400000));
+
+  c.innerHTML =
+    '<div class="dash-stats" style="animation:fadeUp .35s ease both">'+
+      '<div class="stat-card"><div class="sv" style="color:'+accent+'">'+totalSessions+'</div><div class="sl">Sessions</div></div>'+
+      '<div class="stat-card"><div class="sv">'+totalSets+'</div><div class="sl">Total Sets</div></div>'+
+      '<div class="stat-card"><div class="sv">'+(daysAgo===0?'Today':daysAgo+'d')+'</div><div class="sl">Last</div></div>'+
+    '</div>'+
+    '<div class="ex-chips" id="ex-chips"></div>'+
+    '<div class="chart-card" style="animation:fadeUp .35s ease .05s both">'+
+      '<h3>Weight Progress</h3>'+
+      '<div class="chart-sub">Average weight per session</div>'+
+      '<div class="chart-wrap"><canvas id="weight-chart"></canvas></div>'+
+    '</div>'+
+    '<div class="chart-card" style="animation:fadeUp .35s ease .1s both">'+
+      '<h3>Reps per Set</h3>'+
+      '<div class="chart-sub">Every logged set over time</div>'+
+      '<div class="chart-wrap"><canvas id="reps-chart"></canvas></div>'+
+    '</div>'+
+    '<div class="history-section" style="animation:fadeUp .35s ease .15s both">'+
+      '<h3>Recent Sessions</h3>'+
+      '<div id="hist-list"></div>'+
+      '<button class="clear-btn" onclick="clearHistory()">Clear '+activeTab+' History</button>'+
+    '</div>';
+
+  // Exercise chips
+  var chips = document.getElementById('ex-chips');
+  exercises.forEach(function(ex){
+    var ch = document.createElement('button');
+    var on = ex.id===selectedChartEx;
+    ch.className = 'ex-chip ' + (on?'active':'');
+    ch.textContent = ex.name;
+    if (on) { ch.style.background=hexA(accent,.12); ch.style.color=accent; ch.style.borderColor=hexA(accent,.3); }
+    ch.onclick = function(){ selectedChartEx=ex.id; renderDashboard(); };
+    chips.appendChild(ch);
+  });
+
+  buildWeightChart(dh, accent);
+  buildRepsChart(dh, accent);
+  buildHistoryList(dh);
+}
+
+function buildWeightChart(dh, accent) {
+  var ctx = document.getElementById('weight-chart').getContext('2d');
+  var exId = selectedChartEx;
+  var points = [];
+  dh.forEach(function(h){
+    var sets = h.data[exId];
+    if (!sets) return;
+    var arr = Array.isArray(sets) ? sets : [sets];
+    var avg = arr.reduce(function(s,v){ return s+(v.weight||0); },0) / arr.length;
+    points.push({ x:new Date(h.date), y:Math.round(avg*10)/10 });
+  });
+  if(chartW) chartW.destroy();
+  chartW = new Chart(ctx, {
+    type:'line',
+    data:{ datasets:[{
+      data:points, borderColor:accent, backgroundColor:hexA(accent,.06),
+      fill:true, tension:.35, pointRadius:5, pointBackgroundColor:accent,
+      pointBorderColor:'transparent', borderWidth:2.5,
+      pointHoverRadius:7, pointHoverBackgroundColor:'#fff',
+      pointHoverBorderColor:accent, pointHoverBorderWidth:3,
+    }] },
+    options: chartOpts(),
+  });
+}
+
+function buildRepsChart(dh, accent) {
+  var ctx = document.getElementById('reps-chart').getContext('2d');
+  var exId = selectedChartEx;
+  var points = [];
+  dh.forEach(function(h){
+    var sets = h.data[exId];
+    if (!sets) return;
+    var arr = Array.isArray(sets) ? sets : [sets];
+    var d = new Date(h.date);
+    arr.forEach(function(s,i){
+      var t = new Date(d.getTime() + i * 3600000);
+      points.push({ x:t, y:s.reps||0 });
+    });
+  });
+  if(chartR) chartR.destroy();
+  chartR = new Chart(ctx, {
+    type:'scatter',
+    data:{ datasets:[{
+      data:points, backgroundColor:accent,
+      pointRadius:6, pointBorderColor:'transparent',
+      pointHoverRadius:8, pointHoverBackgroundColor:'#fff',
+      pointHoverBorderColor:accent, pointHoverBorderWidth:3,
+    }] },
+    options: chartOpts(),
+  });
+}
+
+function chartOpts() {
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false},
+      tooltip:{ backgroundColor:'#232329', titleColor:'#fafaf9', bodyColor:'#a1a1aa',
+                borderColor:'#2a2a32', borderWidth:1, cornerRadius:8, padding:10,
+                titleFont:{family:'DM Sans',weight:'700'}, bodyFont:{family:'DM Mono'} }
+    },
+    scales:{
+      x:{ type:'time', time:{unit:'day',tooltipFormat:'MMM d'},
+          grid:{color:'rgba(255,255,255,.03)'}, border:{display:false},
+          ticks:{color:'rgba(255,255,255,.18)', font:{family:'DM Sans',size:10}, maxTicksLimit:6} },
+      y:{ grid:{color:'rgba(255,255,255,.03)'}, border:{display:false},
+          beginAtZero:false,
+          ticks:{color:'rgba(255,255,255,.18)', font:{family:'DM Mono',size:10}} },
+    },
+    interaction:{ intersect:false, mode:'nearest' },
+  };
+}
+
+function buildHistoryList(dh) {
+  var list = document.getElementById('hist-list');
+  var recent = dh.slice(-5).reverse();
+  list.innerHTML = recent.map(function(entry){
+    var dt = new Date(entry.date).toLocaleDateString('en-US',
+      {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+    var items = Object.keys(entry.data).map(function(id){
+      var ex = WORKOUTS[activeTab].find(function(e){ return e.id===id; });
+      var name = ex ? ex.name : id;
+      var arr = Array.isArray(entry.data[id]) ? entry.data[id] : [entry.data[id]];
+      var summary = arr.map(function(s){ return s.weight+'\u00D7'+s.reps; }).join(' \u00B7 ');
+      return '<div class="hist-ex"><span class="name">'+name+'</span><span class="vals">'+summary+'</span></div>';
+    }).join('');
+    return '<div class="hist-entry"><div class="hist-date">'+dt+'</div><div class="hist-items">'+items+'</div></div>';
+  }).join('');
+}
+
+async function clearHistory() {
+  if(!confirm('Clear all '+activeTab+' history?')) return;
+  if(sb&&!isDemo&&user) {
+    try { await sb.from('workout_logs').delete().eq('user_id',user.id).eq('day',activeTab); }
+    catch(e){ showToast('Failed','error'); return; }
+  }
+  history = history.filter(function(h){ return h.day!==activeTab; });
+  if(isDemo) localStorage.setItem('ironlog_history',JSON.stringify(history));
+  renderDashboard(); showToast(activeTab+' cleared');
+}
+
+// ═══════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════
+function hexA(hex,a) {
+  var r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}
+function showToast(msg,type) {
+  type = type || 'success';
+  var el=document.getElementById('toast');
+  el.textContent=msg; el.className='toast '+type;
+  clearTimeout(el._t); el._t=setTimeout(function(){ el.classList.add('hidden'); },2200);
+}
+
+// Chart.js date adapter
+(function(){
+  var s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js';
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>
